@@ -7,10 +7,13 @@ namespace StockPriceWebSocketApp.Manager
     public class WebSocketSessionManager
     {
         private readonly ConcurrentDictionary<Guid, (WebSocket Socket, DateTime ExpirationTime)> _sessions = new();
-
         private readonly TimeSpan _defaultSessionTimeout = TimeSpan.FromMinutes(1);
+        private readonly ILogger<WebSocketSessionManager> _logger;
 
-        public WebSocketSessionManager() { }
+        public WebSocketSessionManager(ILogger<WebSocketSessionManager> logger)
+        {
+            _logger = logger;
+        }
 
         public async Task<Guid> AddSession(WebSocket webSocket, TimeSpan? customTimeout = null)
         {
@@ -18,6 +21,7 @@ namespace StockPriceWebSocketApp.Manager
             var expirationTime = DateTime.UtcNow + (customTimeout ?? _defaultSessionTimeout);
 
             _sessions[sessionId] = (webSocket, expirationTime);
+            _logger.LogInformation("Session {SessionId} added with expiration time {ExpirationTime}.", sessionId, expirationTime);
             return sessionId;
         }
 
@@ -30,7 +34,11 @@ namespace StockPriceWebSocketApp.Manager
                     await session.Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Connection closed", CancellationToken.None);
                 }
 
-                Console.WriteLine($"Session {sessionId} removed.");
+                _logger.LogInformation("Session {SessionId} removed.", sessionId);
+            }
+            else
+            {
+                _logger.LogWarning("Attempted to remove non-existent session {SessionId}.", sessionId);
             }
         }
 
@@ -40,6 +48,11 @@ namespace StockPriceWebSocketApp.Manager
             {
                 var buffer = Encoding.UTF8.GetBytes(message);
                 await session.Socket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, CancellationToken.None);
+                _logger.LogInformation("Sent message to session {SessionId}: {Message}", sessionId, message);
+            }
+            else
+            {
+                _logger.LogWarning("Failed to send message to session {SessionId}: session not found or WebSocket closed.", sessionId);
             }
         }
 
@@ -60,24 +73,27 @@ namespace StockPriceWebSocketApp.Manager
 
             if (sendTasks.Count > 0)
             {
+                _logger.LogInformation("Broadcasting message to {Count} sessions.", sendTasks.Count);
                 await Task.WhenAll(sendTasks);
+            }
+            else
+            {
+                _logger.LogWarning("No open WebSocket sessions to broadcast to.");
             }
         }
 
         public async Task MonitorSessionExpiration()
         {
-            Console.WriteLine($"Starting MonitorSessionExpiration..");
-            foreach (var session in _sessions.Keys)
+            _logger.LogInformation("Running session expiration check...");
+            foreach (var sessionId in _sessions.Keys)
             {
-                var currentSession = _sessions[session];
-                var expirationTime = currentSession.ExpirationTime;
+                var (_, expirationTime) = _sessions[sessionId];
                 var timeToExpire = expirationTime - DateTime.UtcNow;
 
                 if (timeToExpire <= TimeSpan.Zero)
                 {
-                    Console.WriteLine($"Session {session} expired!");
-                    await RemoveSession(session);
-                    break;
+                    _logger.LogInformation("Session {SessionId} expired.", sessionId);
+                    await RemoveSession(sessionId);
                 }
             }
         }

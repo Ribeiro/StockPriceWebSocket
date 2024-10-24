@@ -5,10 +5,12 @@ namespace StockPriceWebSocketApp.Service
     public class StockPriceService
     {
         private readonly WebSocketSessionManager _sessionManager;
+        private readonly ILogger<StockPriceService> _logger;
 
-        public StockPriceService(WebSocketSessionManager sessionManager)
+        public StockPriceService(WebSocketSessionManager sessionManager, ILogger<StockPriceService> logger)
         {
             _sessionManager = sessionManager;
+            _logger = logger;
         }
 
         public async Task StartSendingPriceUpdates(Guid sessionId)
@@ -20,6 +22,7 @@ namespace StockPriceWebSocketApp.Service
                     var stockPrice = GetRandomStockPrice();
                     var message = $"Stock Price Update for session {sessionId}: {stockPrice}";
 
+                    _logger.LogInformation("Sending stock price update: {StockPrice} to session: {SessionId}", stockPrice, sessionId);
                     await _sessionManager.SendToSession(sessionId, message);
 
                     await Task.Delay(2000);
@@ -27,7 +30,7 @@ namespace StockPriceWebSocketApp.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Erro ao enviar preço de ação: {ex.Message}");
+                _logger.LogError(ex, "Error sending stock price to session: {SessionId}", sessionId);
             }
         }
 
@@ -37,5 +40,4 @@ namespace StockPriceWebSocketApp.Service
             return Math.Round((decimal)(random.NextDouble() * 1000), 2);
         }
     }
-
 }

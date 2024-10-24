@@ -44,7 +44,6 @@ namespace StockPriceWebSocketApp
             var sessionManagerMonitorTask = Task.Run(async () =>
             {
                 var sessionManager = app.Services.GetRequiredService<WebSocketSessionManager>();
-                
                 while (true)
                 {
                     await sessionManager.MonitorSessionExpiration();
